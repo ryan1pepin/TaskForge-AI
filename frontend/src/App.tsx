@@ -1,56 +1,72 @@
-import { useEffect } from "react";
-import { useAuthStore } from "./store/auth";
-import { api, ApiError } from "./api/client";
-import { TokenResponseSchema } from "./schemas/auth";
+import { useEffect, useState } from "react"
+import { createBrowserRouter, RouterProvider, Navigate, Outlet } from "react-router-dom"
+import Layout from "./Layout"
+import Login from "./pages/Login"
+import Register from "./pages/Register"
+import ProjectList from "./pages/ProjectList"
+import ProjectDetail from "./pages/ProjectDetail"
+import { useAuthStore } from "./store/auth"
+import { api } from "./api/client"
 
-// ── Silent Session Restore ────────────────────────────────────────────────────
-// On mount, attempt to silently restore the session by calling /auth/refresh.
-// The browser automatically sends the httpOnly refresh cookie — we just need
-// to receive the new access token and store it in the Zustand memory store.
-// If this fails (expired or no cookie), the user stays logged out.
-function useSessionRestore() {
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
+function ProtectedRoute() {
+  const accessToken = useAuthStore(state => state.accessToken)
+  
+  if (!accessToken) {
+    return <Navigate to="/login" replace />
+  }
+  
+  return <Outlet />
+}
+
+function SessionRestore({ children }: { children: React.ReactNode }) {
+  const [isRestoring, setIsRestoring] = useState(true)
+  const setAccessToken = useAuthStore(state => state.setAccessToken)
 
   useEffect(() => {
-    api
-      .refresh()
-      .then((data) => {
-        const parsed = TokenResponseSchema.safeParse(data);
-        if (parsed.success) {
-          setAccessToken(parsed.data.access_token);
+    async function restoreSession() {
+      try {
+        const data = await api.refresh()
+        // Ensure data is typed or at least check for access_token
+        if (data && (data as any).access_token) {
+          setAccessToken((data as any).access_token)
         }
-      })
-      .catch((err: ApiError) => {
-        // 401 = no valid session → stay logged out, that's fine
-        if (err.status !== 401) {
-          console.error("Session restore failed unexpectedly:", err);
-        }
-      });
-  }, [setAccessToken]);
+      } catch (err) {
+        // silently fail, user must log in
+      } finally {
+        setIsRestoring(false)
+      }
+    }
+    restoreSession()
+  }, [setAccessToken])
+
+  if (isRestoring) return <div className="flex h-screen items-center justify-center">Loading session...</div>
+
+  return <>{children}</>
 }
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: (
+      <SessionRestore>
+        <Layout />
+      </SessionRestore>
+    ),
+    children: [
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { index: true, element: <ProjectList /> },
+          { path: "projects/:id", element: <ProjectDetail /> },
+        ]
+      }
+    ],
+  },
+  { path: "/login", element: <SessionRestore><Login /></SessionRestore> },
+  { path: "/register", element: <SessionRestore><Register /></SessionRestore> },
+])
 
 export default function App() {
-  useSessionRestore();
-  const accessToken = useAuthStore((s) => s.accessToken);
-
-  return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center">
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">
-          TaskForge <span className="text-indigo-400">AI</span>
-        </h1>
-        <p className="text-gray-400 text-lg">
-          Phase 1 scaffold — backend connected
-        </p>
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-800 text-sm">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              accessToken ? "bg-green-400" : "bg-yellow-400"
-            }`}
-          />
-          {accessToken ? "Session active" : "Not authenticated"}
-        </div>
-      </div>
-    </div>
-  );
+  return <RouterProvider router={router} />
 }
+
