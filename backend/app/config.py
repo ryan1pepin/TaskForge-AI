@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # CORS Settings
     CORS_ORIGINS: list[str] = Field(default=["http://localhost:5173"])
 
+    # AI / LLM Settings
+    OPENAI_API_KEY: str = Field(default="")
+    OPENAI_MODEL: str = Field(default="gpt-4o-mini")
+
     # Load configuration from .env file if it exists
     model_config = SettingsConfigDict(
         env_file=".env",
