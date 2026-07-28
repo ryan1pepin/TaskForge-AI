@@ -69,3 +69,50 @@ class TaskResponse(TaskBase):
     project_id: UUID
     created_at: datetime
     updated_at: datetime
+
+
+# --- AI Suggestion Schemas ---
+
+class AIPriorityResponse(BaseModel):
+    suggested_priority: int
+    reasoning: str
+    confidence: float  # 0.0-1.0
+
+
+class AIDeadlineResponse(BaseModel):
+    suggested_due_date: Optional[datetime] = None
+    confidence: float = 0.5
+    reasoning: str
+
+
+class AIDescriptionResponse(BaseModel):
+    description: str
+    confidence: float
+
+
+class AISuggestedTasksResponse(BaseModel):
+    suggestions: list["AISuggestionItem"]
+
+
+class AISuggestionItem(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: int = 0
+
+
+class HealthTask(BaseModel):
+    task: str
+    status: str
+    priority: int
+
+
+class HealthScoreResponse(BaseModel):
+    score: float
+    progress_pct: float
+    total: int
+    completed: int
+    overdue_count: int
+    high_prio_open: int
+    flag: Optional[str] = None
+    recent_tasks: list[HealthTask]
+    project_title: str = ""
