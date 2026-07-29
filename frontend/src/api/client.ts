@@ -1,116 +1,129 @@
-// Thin fetch-based API client.
-// Deliberately avoids Axios to reduce bundle size and prevent interceptor
-// conflicts with TanStack Query's own lifecycle (refetch, retry, rollback).
-//
-// Auth pattern:
-//   - Access token lives in Zustand memory store (never localStorage → XSS safe)
-//   - Refresh token lives in httpOnly cookie (set by backend → CSRF protected via SameSite=Lax)
-//   - On 401, we call /auth/refresh once (with credentials), get a new access token,
-//     and retry the original request — TanStack Query handles re-queuing.
+// Thin fetch-based API client with Zustand-sourced access token.
+// Deliberately avoids Axios → less bundle bloat, no interceptor race vs TanStack Query retry/rollback.
+
+import { useAuthStore } from "../store/auth";
 
 const BASE_URL = "/api/v1";
 
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public detail: string,
-  ) {
+  constructor(public status: number, public detail: string) {
     super(detail);
     this.name = "ApiError";
   }
 }
 
-// ── Core request helper ───────────────────────────────────────────────────────
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  accessToken?: string | null,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
-  };
+export type ProjectParams = { limit?: number; offset?: number; status?: string };
+export type TaskParams = { status?: string };
 
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
+// ── Core request helper with 401 auto-refresh ────────────────────────────────
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = useAuthStore.getState().accessToken ?? null;
+  let attempt = 0;
+
+  while (attempt <= 1) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers as Record<string, string>),
+      },
+      credentials: "include", // httpOnly refresh cookie travels cross-origin
+    });
+
+    if (res.status === 401 && attempt === 0) {
+      try {
+        const refreshed = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: "POST", credentials: "include" as RequestCredentials,
+        });
+        if (refreshed.ok) {
+          const j = await refreshed.json();
+          useAuthStore.getState().setAccessToken(j.access_token);
+        } else {
+          useAuthStore.getState().clearToken();
+          throw new ApiError(401, "Session expired");
+        }
+      } catch (_recovered: unknown) {
+        if ((_recovered as ApiError).status === 401) throw _recovered as Error;
+        /* network blip — try one original retry */
+      }
+      attempt++;
+      continue; // retry with fresh token in next loop iteration
+    }
+
+    if (res.status === 204) return undefined as T;
+
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    if (!res.ok) throw new ApiError(res.status, body.detail ?? "Unknown error");
+
+    return body as T;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-    // credentials: "include" sends the httpOnly refresh cookie on every request
-    credentials: "include",
-  });
-
-  // 204 No Content — return empty without trying to parse JSON
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const data = await response.json().catch(() => ({ detail: response.statusText }));
-
-  if (!response.ok) {
-    throw new ApiError(response.status, data.detail ?? "Unknown error");
-  }
-
-  return data as T;
+  /* unreachable guard */
+  return Promise.reject(new Error("Unreachable"));
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-// These are the raw fetch functions consumed by TanStack Query hooks.
-// TanStack Query owns retry logic, caching, and stale-time — we don't duplicate that here.
+// ── Public API surface (consumed by TanStack Query hooks / mutations) ────────
 
 export const api = {
-  // Auth
-  register: (email: string, password: string) =>
-    request("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+  // ─ Auth ─
+  login: (email: string, pw: string) =>
+    request("/auth/login", { method: "POST", body: JSON.stringify({ email, password: pw }) }),
 
-  login: (email: string, password: string) =>
-    request("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+  register: (email: string, pw: string) =>
+    request("/auth/register", { method: "POST", body: JSON.stringify({ email, password: pw }) }),
 
-  refresh: () =>
-    request("/auth/refresh", { method: "POST" }),
+  refresh: () => request("/auth/refresh", { method: "POST" }),
 
-  logout: (accessToken: string) =>
-    request("/auth/logout", { method: "POST" }, accessToken),
+  logout: () => request("/auth/logout", { method: "POST" }),
 
-  // Projects
-  getProjects: (accessToken: string, params?: { limit?: number; offset?: number; status?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.limit)  qs.set("limit",  String(params.limit));
-    if (params?.offset) qs.set("offset", String(params.offset));
-    if (params?.status) qs.set("status", params.status);
-    return request(`/projects${qs.size ? `?${qs}` : ""}`, {}, accessToken);
+  // ─ Projects ─
+  getProjects(opts?: ProjectParams) {
+    const q = new URLSearchParams();
+    if (opts?.limit)  q.set("limit", String(opts.limit));
+    if (opts?.offset) q.set("offset", String(opts.offset));
+    if (opts?.status) q.set("status", opts.status);
+    return request(`/projects${q.size ? "?" + q : ""}`);
   },
 
-  createProject: (accessToken: string, body: object) =>
-    request("/projects", { method: "POST", body: JSON.stringify(body) }, accessToken),
+  createProject(body: object) =>
+    request("/projects", { method: "POST", body: JSON.stringify(body) }),
 
-  updateProject: (accessToken: string, id: string, body: object) =>
-    request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken),
+  updateProject(id: string, body: object) =>
+    request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
-  deleteProject: (accessToken: string, id: string) =>
-    request(`/projects/${id}`, { method: "DELETE" }, accessToken),
+  deleteProject(id: string) =>
+    request(`/projects/${id}`, { method: "DELETE" }),
 
-  // Tasks
-  getTasks: (accessToken: string, projectId: string, params?: { status?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.status) qs.set("status", params.status);
-    return request(`/projects/${projectId}/tasks${qs.size ? `?${qs}` : ""}`, {}, accessToken);
+  // ─ Tasks ─
+  getTasks(projectId: string, opts?: TaskParams) {
+    const q = new URLSearchParams();
+    if (opts?.status) q.set("status", opts.status);
+    return request(`/projects/${projectId}/tasks${q.size ? "?" + q : ""}`);
   },
 
-  createTask: (accessToken: string, projectId: string, body: object) =>
-    request(`/projects/${projectId}/tasks`, { method: "POST", body: JSON.stringify(body) }, accessToken),
+  createTask(projectId: string, body: object) =>
+    request(`/projects/${projectId}/tasks`, { method: "POST", body: JSON.stringify(body) }),
 
-  updateTask: (accessToken: string, projectId: string, taskId: string, body: object) =>
-    request(`/projects/${projectId}/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken),
+  updateTask(projectId: string, taskId: string, body: object) =>
+    request(`/projects/${projectId}/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(body) }),
 
-  deleteTask: (accessToken: string, projectId: string, taskId: string) =>
-    request(`/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" }, accessToken),
+  deleteTask(projectId: string, taskId: string) =>
+    request(`/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" }),
+
+  // ─ AI endpoints ─
+  suggestPriority: (pid: string, tid: string) =>
+    request(`/projects/${pid}/tasks/${tid}/suggest-priority`, { method: "POST" }),
+
+  suggestDeadline: (pid: string, tid: string) =>
+    request(`/projects/${pid}/tasks/${tid}/suggest-deadline`, { method: "POST" }),
+
+  generateDescription: (pid: string, tid: string) =>
+    request(`/projects/${pid}/tasks/${tid}/generate-description`, { method: "POST" }),
+
+  suggestTasks: (pid: string) =>
+    request(`/projects/${pid}/suggest-tasks`, { method: "POST" }),
+
+  projectHealth: (pid: string) =>
+    request(`/projects/${pid}/health`, { method: "GET" }),
 };
