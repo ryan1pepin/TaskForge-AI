@@ -11,7 +11,7 @@ export default function Layout() {
 
   async function handleLogout() {
     try {
-      await api.logout(accessToken!)
+      await api.logout()
     } finally {
       clearAuth()
       navigate("/login")
