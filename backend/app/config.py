@@ -22,9 +22,10 @@ class Settings(BaseSettings):
     # CORS Settings
     CORS_ORIGINS: list[str] = Field(default=["http://localhost:5173"])
 
-    # AI / LLM Settings
-    OPENAI_API_KEY: str = Field(default="")
-    OPENAI_MODEL: str = Field(default="gpt-4o-mini")
+    # AI / LLM Settings — local Ollama by default, falls back to cloud OpenAI if BASE_URL empty
+    OPENAI_API_KEY: str = Field(default="ollama")  # Ollama doesn't require a real key
+    OPENAI_MODEL: str = Field(default="gemma2:2b")  # lightweight model, doesn't conflict with qwen-hermes
+    OPENAI_BASE_URL: str = Field(default="http://localhost:11434/v1")
 
     # Load configuration from .env file if it exists
     model_config = SettingsConfigDict(
