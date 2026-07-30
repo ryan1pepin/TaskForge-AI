@@ -5,6 +5,7 @@ import Login from "./pages/Login"
 import Register from "./pages/Register"
 import ProjectList from "./pages/ProjectList"
 import ProjectDetail from "./pages/ProjectDetail"
+import NewProject from "./pages/NewProject"
 import { useAuthStore } from "./store/auth"
 import { api } from "./api/client"
 
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { index: true, element: <ProjectList /> },
+          { path: "projects/new", element: <NewProject /> },
           { path: "projects/:projectId", element: <ProjectDetail /> },
         ]
       }

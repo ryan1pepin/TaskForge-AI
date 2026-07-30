@@ -80,9 +80,12 @@ async def suggest_priority(project_id: UUID, task_id: UUID,
     if not t: raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
 
     # Pull sibling tasks for context: (title, priority, status)
-    siblings = [f"{tk.title} (p:{tk.priority}, {tk.status})" for tk in (
-        await db.execute(select(Task).where(Task.project_id == project_id, Task.id != task_id, Task.deleted_at.is_(None)))
-    )].scalars().all()
+    sibs = (await db.execute(select(Task).where(
+        Task.project_id == project_id,
+        Task.id != task_id,
+        Task.deleted_at.is_(None),
+    ))).scalars().all()
+    siblings = [f"{tk.title} (p:{tk.priority}, {tk.status})" for tk in sibs]
 
     try:
         txt = await call_llm("You are a concise, strictly factual project manager.", {
