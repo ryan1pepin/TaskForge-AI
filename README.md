@@ -60,4 +60,4 @@ TaskForge AI/
 └── docker-compose.yml           # PostgreSQL + Redis services
 ```
 
-See [DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) for architectural trade-offs and technology choices.
+
