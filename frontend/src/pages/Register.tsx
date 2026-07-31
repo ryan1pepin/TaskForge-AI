@@ -22,7 +22,7 @@ export default function Register() {
       const data = await api.register(email, password)
       if (data && data.access_token) {
         setAccessToken(data.access_token)
-        navigate("/projects")
+        navigate("/")
       } else {
         setError("Registration failed")
       }
