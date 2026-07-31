@@ -86,13 +86,13 @@ export const api = {
     return request(`/projects${q.size ? "?" + q : ""}`);
   },
 
-  createProject(body: object) =>
+  createProject: (body: object) =>
     request("/projects", { method: "POST", body: JSON.stringify(body) }),
 
-  updateProject(id: string, body: object) =>
+  updateProject: (id: string, body: object) =>
     request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
-  deleteProject(id: string) =>
+  deleteProject: (id: string) =>
     request(`/projects/${id}`, { method: "DELETE" }),
 
   // ─ Tasks ─
@@ -102,13 +102,13 @@ export const api = {
     return request(`/projects/${projectId}/tasks${q.size ? "?" + q : ""}`);
   },
 
-  createTask(projectId: string, body: object) =>
+  createTask: (projectId: string, body: object) =>
     request(`/projects/${projectId}/tasks`, { method: "POST", body: JSON.stringify(body) }),
 
-  updateTask(projectId: string, taskId: string, body: object) =>
+  updateTask: (projectId: string, taskId: string, body: object) =>
     request(`/projects/${projectId}/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(body) }),
 
-  deleteTask(projectId: string, taskId: string) =>
+  deleteTask: (projectId: string, taskId: string) =>
     request(`/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" }),
 
   // ─ AI endpoints ─

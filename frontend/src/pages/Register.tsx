@@ -58,7 +58,7 @@ export default function Register() {
         <p className="mt-4 text-center text-sm">
           Already have an account? <Link to="/login" className="text-blue-600 underline">Log in</Link>
         </p>
-      </form />
+      </form>
     </div>
   )
 }
