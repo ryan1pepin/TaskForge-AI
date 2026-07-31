@@ -60,6 +60,13 @@ export default function ProjectDetail() {
   /* ── Render ── */
   if (loadingTasks) return <p className="p-6 text-gray-300">Loading project...</p>
 
+  function onDropCol(e, colKey) {
+    try {
+      const tid = JSON.parse(e.dataTransfer.getData("text/plain")).id;
+      update.mutate({ taskId: tid, status: colKey });
+    } catch {} // ignore bad drops
+  }
+
   return (
     <div className="space-y-8 p-6">
       <div className="flex items-center justify-between">
@@ -83,7 +90,10 @@ export default function ProjectDetail() {
       {/* Kanban board */}
       <div className="grid gap-4 md:grid-cols-3">
         {COLUMNS.map(col => (
-          <section key={col.key} className="rounded-xl bg-gray-900/50 p-4">
+          <section key={col.key} className="rounded-xl bg-gray-900/50 p-4"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => onDropCol(e, col.key)}
+          >
             <div className="mb-4 flex items-center justify-between border-b border-gray-800 pb-2">
               <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-400">{col.label}</h2>
               <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{colMap[col.key].length}</span>
@@ -91,7 +101,7 @@ export default function ProjectDetail() {
             <div className="space-y-3" style={{ minHeight: 100 }}>
               {colMap[col.key]?.map(task => (
                 <TaskCard key={task.id} task={task} colKey={col.key}
-                  onMove={() => update.mutate({ taskId: task.id, status: col.key })}
+                  onUpdate={(values) => update.mutate({ taskId: task.id, ...values })}
                   onDelete={() => remove.mutate(task.id)}
                   onAI={(type) => handleAI(task.id, type)} />
               ))}
@@ -126,17 +136,19 @@ export default function ProjectDetail() {
 }
 
 /* ── Task Card (standalone component for edit state) ── */
-function TaskCard({ task, colKey, onDelete, onAI }: {
+function TaskCard({ task, colKey, onDelete, onAI, onUpdate }: {
   task: TaskResponse; colKey: Column
-  onMove?: any; onDelete: any
+  onUpdate?: (values: Record<string, any>) => void; onDelete: any
   onAI: (t: "priority" | "deadline" | "description") => void
 }) {
   const [editing, setEditing] = useState(false)
   const qc = useQueryClient()
   const [d, setD] = useState({ title: task.title, desc: task.description ?? "", pri: task.priority, due: task.due_date ? task.due_date.slice(0, 10) : "" })
 
-  // Sync if task changes externally
-  useEffect(() => { setD({ title: task.title, desc: task.description ?? "", pri: task.priority, due: task.due_date ? task.due_date.slice(0, 10) : "" }) }, [task])
+  // Sync if task changes externally (after parent refreshes)
+  useEffect(() => {
+    setD({ title: task.title, desc: task.description ?? "", pri: task.priority, due: task.due_date ? task.due_date.slice(0, 10) : "" })
+  }, [task.id, task.title, task.description, task.priority, task.due_date])
 
   async function save() {
     await api.updateTask(task.project_id, task.id, {
@@ -150,7 +162,13 @@ function TaskCard({ task, colKey, onDelete, onAI }: {
   const due = task.due_date ? new Date(task.due_date).toLocaleDateString() : null
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-700/60 bg-gradient-to-b from-gray-800 to-gray-900 shadow-md transition-all hover:border-violet-500/30 hover:shadow-violet-500/10">
+    <div className="overflow-hidden rounded-lg border border-gray-700/60 bg-gradient-to-b from-gray-800 to-gray-900 shadow-md transition-all hover:border-violet-500/30 hover:shadow-violet-500/10 cursor-grab active:cursor-grabbing"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", JSON.stringify({ id: task.id }));
+        e.dataTransfer.effectAllowed = "move";
+      }}
+    >
       {editing ? (
         /* ── Edit form ── */
         <div className="p-4 space-y-2">
@@ -203,7 +221,21 @@ function TaskCard({ task, colKey, onDelete, onAI }: {
           )}
 
           {/* Action buttons */}
-          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-gray-800 pt-2">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-gray-800 pt-2">
+            {/* Move arrows */}
+            {colKey !== "todo" && (
+              (() => {
+                const prev = colKey === "in_progress" ? "todo" : "in_progress";
+                return <button onClick={() => onUpdate?.({ status: prev })} title={`Move to ${COLUMNS.find(c => c.key === prev)?.label}`} className="text-xs rounded-full border border-gray-600 px-2 py-0.5 text-gray-400 hover:bg-gray-700">←</button>;
+              })()
+            )}
+            {colKey !== "done" && (
+              (() => {
+                const next = colKey === "todo" ? "in_progress" : "done";
+                return <button onClick={() => onUpdate?.({ status: next })} title={`Move to ${COLUMNS.find(c => c.key === next)?.label}`} className="text-xs rounded-full border border-gray-600 px-2 py-0.5 text-gray-400 hover:bg-gray-700">→</button>;
+              })()
+            )}
+            <div className="h-4 w-px border-l border-gray-700" />
             <button onClick={() => onAI("priority")} title="AI suggest & apply priority"
               className="text-[10px] rounded-full border border-purple-500/30 px-2 py-0.5 text-purple-400 hover:bg-purple-500/10 transition">
               ⚡ Priority
