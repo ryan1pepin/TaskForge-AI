@@ -58,6 +58,7 @@ const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { index: true, element: <ProjectList /> },
+          { path: "projects", element: <Navigate to="/" replace /> },
           { path: "projects/new", element: <NewProject /> },
           { path: "projects/:projectId", element: <ProjectDetail /> },
         ]

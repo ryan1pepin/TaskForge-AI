@@ -9,4 +9,6 @@ build/
 .pytest_cache/
 .env
 .DS_Store
-taskforge.db _e2e_test.py
+taskforge.db
+*/taskforge.db
+backend/taskforge.db
