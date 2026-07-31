@@ -1,7 +1,13 @@
 import { Outlet, Link, useNavigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "./store/auth"
 import { api } from "./api/client"
-import Logo from "./assets/logo.svg"
+
+const Logo = () => (
+  <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="#6D28D9" strokeWidth="2" />
+    <path d="M15 5L9 10L15 15L21 12" stroke="#A78BFA" strokeWidth="2" />
+  </svg>
+)
 
 export default function Layout() {
   const accessToken = useAuthStore((s) => s.accessToken)
